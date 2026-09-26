@@ -1,0 +1,149 @@
+
+#region 
+
+# Transformation pipeline for m1
+m1 <- m1 %>%
+  mutate(
+    across(
+      c(Glu   = KN1_M010273_01,
+        OPA   = KN1_M010273_02,
+        PAA   = KN1_M010273_03,
+        HP    = KN1_M010273_04,
+        EO    = KN1_M010273_05,
+        FA    = KN1_M010273_06,
+        Other = KN1_M010273_07),
+      ~ case_when(
+        .x == 2 ~ 1L,
+        .x == 1 ~ 0L,
+        TRUE ~ NA_integer_
+      )
+    ),
+    any_subs = case_when(
+      if_any(c(Glu, OPA, PAA, HP, EO, FA, Other), ~ .x == 1L) ~ 1L,
+      if_all(c(Glu, OPA, PAA, HP, EO, FA, Other), is.na) ~ NA_integer_,
+      TRUE ~ 0L
+    )
+  )
+
+# Transformation pipeline for m5
+m5 <- m5 %>%
+  mutate(
+    across(
+      c(Glu   = KN5_P15_Q002_02_01,
+        OPA   = KN5_P15_Q002_02_02,
+        PAA   = KN5_P15_Q002_02_03,
+        HP    = KN5_P15_Q002_02_04,
+        EO    = KN5_P15_Q002_02_05,
+        FA    = KN5_P15_Q002_02_06,
+        Other = KN5_P15_Q002_02_07),
+      ~ case_when(
+        .x == 2 ~ 1L,
+        .x == 1 ~ 0L,
+        TRUE ~ NA_integer_
+      )
+    ),
+    any_subs = case_when(
+      if_any(c(Glu, OPA, PAA, HP, EO, FA, Other), ~ .x == 1L) ~ 1L,
+      if_all(c(Glu, OPA, PAA, HP, EO, FA, Other), is.na) ~ NA_integer_,
+      TRUE ~ 0L
+    )
+  )
+
+# Create MDQ at m3 & m7
+##  MDQ 이용한 결과 분석 (2026-09-21)
+
+# Helper to generate zero-padded variable names
+make_mdq_names <- function(prefix, numbers, suffix) {
+  sprintf("%s%03d%s", prefix, numbers, suffix)
+}
+
+# Helper to safely sum columns even if they are characters/factors
+safe_row_sum <- function(df, col_names, na.rm = FALSE) {
+  # Subset and convert all selected columns to numeric
+  mat <- sapply(df[, col_names, drop = FALSE], function(x) as.numeric(as.character(x)))
+  # Treat values of 5 or greater as missing before summing
+  mat[mat >= 5] <- NA_real_
+  rowSums(mat, na.rm = na.rm)
+}
+
+# Define item index sets
+all_items_idx  <- 1:46
+excl_items_idx <- 36:40
+incl_items_idx <- setdiff(all_items_idx, excl_items_idx) # 41 items
+
+# ==========================================
+# 1. Dataset m3
+# ==========================================
+m3_incl_cols <- make_mdq_names("KN3_P11_Q", incl_items_idx, "_00")
+m3_excl_cols <- make_mdq_names("KN3_P11_Q", excl_items_idx, "_00")
+
+m3$mdq_score          <- safe_row_sum(m3, m3_incl_cols, na.rm = FALSE)
+m3$mdq_score_excluded <- safe_row_sum(m3, m3_excl_cols, na.rm = FALSE)
+
+# ==========================================
+# 2. Dataset m7: mdq_Score1 (suffix _01) - 월경 전
+# ==========================================
+m7_1_incl_cols <- make_mdq_names("KN7_P08_Q", incl_items_idx, "_01")
+m7_1_excl_cols <- make_mdq_names("KN7_P08_Q", excl_items_idx, "_01")
+
+m7$mdq_Score1          <- safe_row_sum(m7, m7_1_incl_cols, na.rm = FALSE)
+m7$mdq_Score1_excluded <- safe_row_sum(m7, m7_1_excl_cols, na.rm = FALSE)
+
+# ==========================================
+# 3. Dataset m7: mdq_Score2 (suffix _02) - 월경 중
+# ==========================================
+m7_2_incl_cols <- make_mdq_names("KN7_P08_Q", incl_items_idx, "_02")
+m7_2_excl_cols <- make_mdq_names("KN7_P08_Q", excl_items_idx, "_02")
+
+m7$mdq_Score2          <- safe_row_sum(m7, m7_2_incl_cols, na.rm = FALSE)
+m7$mdq_Score2_excluded <- safe_row_sum(m7, m7_2_excl_cols, na.rm = FALSE)
+
+#endregion
+
+#region 
+# mens_reg_cat1
+x <- m3$KN3_P07_Q001
+m3$mens_reg_cat1 <- NA_integer_
+
+m3$mens_reg_cat1[!is.na(x) & x < 5] <- 0L
+m3$mens_reg_cat1[!is.na(x) & x >= 5 & x <= 6] <- 1L
+m3$mens_reg_cat1[!is.na(x) & x >= 7 & x <= 9] <- 2L
+
+# mens_reg_cat2
+x <- m3$KN3_P07_Q002
+m3$mens_reg_cat2 <- NA_integer_
+
+m3$mens_reg_cat2[!is.na(x) & x < 3] <- 0L
+m3$mens_reg_cat2[!is.na(x) & x >= 3 & x <= 4] <- 1L
+m3$mens_reg_cat2[!is.na(x) & x >= 5 & x <= 7] <- 2L
+
+# mens_irr
+cat1_one <- !is.na(m3$mens_reg_cat1) & m3$mens_reg_cat1 == 1
+cat2_one <- !is.na(m3$mens_reg_cat2) & m3$mens_reg_cat2 == 1
+
+m3$mens_irr <- NA_integer_
+m3$mens_irr[cat1_one | cat2_one] <- 0L
+m3$mens_irr[cat1_one & cat2_one] <- 1L
+
+# mens_reg_cat1
+m7$mens_reg_cat1 <- NA_integer_
+x <- m7$KN7_P07_Q001
+
+m7$mens_reg_cat1[!is.na(x) & x < 5] <- 0L
+m7$mens_reg_cat1[!is.na(x) & (x == 5 | x == 6)] <- 2L
+
+# mens_reg_cat2
+m7$mens_reg_cat2 <- NA_integer_
+x <- m7$KN7_P07_Q002
+
+m7$mens_reg_cat2[!is.na(x) & x < 3] <- 0L
+m7$mens_reg_cat2[!is.na(x) & x >= 3 & x <= 4] <- 1L
+m7$mens_reg_cat2[!is.na(x) & x >= 5 & x <= 7] <- 2L
+
+# mens_irr
+cat1_one <- !is.na(m7$mens_reg_cat1) & m7$mens_reg_cat1 == 1
+cat2_one <- !is.na(m7$mens_reg_cat2) & m7$mens_reg_cat2 == 1
+
+m7$mens_irr <- NA_integer_
+m7$mens_irr[cat1_one | cat2_one] <- 0L
+m7$mens_irr[cat1_one & cat2_one] <- 1L
